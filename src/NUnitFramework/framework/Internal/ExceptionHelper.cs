@@ -40,6 +40,13 @@ namespace NUnit.Framework.Internal
         /// When true, each entry in Exception.Data is included in the exception message.
         /// </summary>
         public static bool OutputExceptionDataProperty { get; set; } = true;
+
+        /// <summary>
+        /// Stores delegates used to provide additional details for exception messages.
+        /// The key will be used as a section header in the message.
+        /// </summary>
+        public static IDictionary<string, Func<Exception, string>> AdditionalDetailsProviders { get; } 
+            = new Dictionary<string, Func<Exception, string>>();
             
 #if NET35 || NET40
         private static readonly Action<Exception> PreserveStackTrace;
@@ -88,28 +95,39 @@ namespace NUnit.Framework.Internal
             Guard.ArgumentNotNull(exception, nameof(exception));
 
             StringBuilder sb = new StringBuilder();
-            if (!excludeExceptionNames)
-                sb.AppendFormat("{0} : ", exception.GetType());
-            sb.Append(GetExceptionMessage(exception));
-            if (OutputExceptionDataProperty)
-            {
-                AppendExceptionDataContents(exception, sb);
-            }
+            AppendToMessage(exception, excludeExceptionNames, sb);
 
             foreach (Exception inner in FlattenExceptionHierarchy(exception))
             {
                 sb.Append(Environment.NewLine);
                 sb.Append("  ----> ");
-                if (!excludeExceptionNames)
-                    sb.AppendFormat("{0} : ", inner.GetType());
-                sb.Append(GetExceptionMessage(inner));
-                if (OutputExceptionDataProperty)
-                {
-                    AppendExceptionDataContents(inner, sb);
-                }
+                AppendToMessage(inner, excludeExceptionNames, sb);
             }
 
             return sb.ToString();
+        }
+
+        private static void AppendToMessage(Exception exception, bool excludeExceptionNames, StringBuilder sb)
+        {
+            if (!excludeExceptionNames)
+                sb.AppendFormat("{0} : ", exception.GetType());
+            
+            sb.Append(GetExceptionMessage(exception));
+            
+            if (OutputExceptionDataProperty)
+            {
+                AppendExceptionDataContents(exception, sb);
+            }
+
+            foreach (var kvp in AdditionalDetailsProviders)
+            {
+                if (kvp.Value == null)
+                {
+                    throw new InvalidOperationException($"No value provided for ");
+                }
+                sb.AppendLine();
+                sb.AppendLine($"{kvp.Key}:{kvp.Value(exception)}");
+            }
         }
 
         /// <summary>
